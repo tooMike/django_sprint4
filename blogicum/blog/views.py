@@ -1,6 +1,7 @@
-from typing import Any
+from django import forms
 from django.contrib.auth import get_user_model
-from django.core.paginator import Paginator
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.forms.widgets import DateInput
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.generic import CreateView, DetailView, ListView
@@ -20,11 +21,19 @@ class PostDetailView(PostMixin, DetailView):
     pass
 
 
-class PostCreateView(PostMixin, CreateView):
-    fields = "__all__"
+class PostCreateView(PostMixin, LoginRequiredMixin, CreateView):
+    fields = '__all__'
+
+    def get_form(self, form_class=None):
+        """Настроить виджеты формы внутри представления."""
+        form = super().get_form(form_class)
+        form.fields['pub_date'].widget = DateInput(attrs={'type': 'date'})
+        return form
+
 
 
 class PostListMixin(PostMixin):
+    """Добавляем в миксине фильтры и связанные модели"""
     paginate_by = 10
 
     def get_queryset(self):
@@ -33,7 +42,11 @@ class PostListMixin(PostMixin):
             "category",
             "location",
             "author",
-        ).filter(pub_date__lte=now, is_published=True, category__is_published=True)
+        ).filter(
+            pub_date__lte=now,
+            is_published=True,
+            category__is_published=True
+        )
 
 
 class PostListView(PostListMixin, ListView):
@@ -41,39 +54,36 @@ class PostListView(PostListMixin, ListView):
 
 
 class CategoryListView(PostListMixin, ListView):
+    template_name = 'blog/category_list.html'
 
-    def get_queryset(self, **kwargs):
+    def get_queryset(self):
         """Фильтруем посты по категории."""
         self.category = get_object_or_404(
             Category,
-            slug=self.kwargs["slug"],
+            slug=self.kwargs['slug'],
             is_published=True,
         )
+
         return super().get_queryset().filter(category=self.category)
 
     def get_context_data(self, **kwargs):
         """Добавляем категории в контекст."""
         context = super().get_context_data(**kwargs)
-        context["category"] = self.category
+        context['category'] = self.category
         return context
 
 
-class UserDetailView(DetailView):
-    model = User
-    slug_field = "username"
-    template_name = "blog/profile.html"
-    context_object_name = "profile"
+class UserDetailView(PostListMixin, ListView):
+    template_name = 'blog/profile.html'
+
+    def get_queryset(self):
+        self.author = get_object_or_404(
+            User,
+            username=self.kwargs['slug'],
+        )
+        return super().get_queryset().filter(author=self.author)
 
     def get_context_data(self, **kwargs):
-        """Добавляем посты нужного автора в контекст."""
         context = super().get_context_data(**kwargs)
-        post_list = Post.objects.select_related(
-            "author",
-        ).filter(
-            author__username=self.kwargs["slug"],
-        )
-        paginator = Paginator(post_list, 10)
-        page_number = self.request.GET.get("page")
-        page_obj = paginator.get_page(page_number)
-        context["page_obj"] = page_obj
+        context['profile'] = self.author
         return context
