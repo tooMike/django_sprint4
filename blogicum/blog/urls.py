@@ -14,8 +14,14 @@ urlpatterns = [
         name='category_posts'
     ),
     path(
+        'profile/<slug:slug>/edit',
+        views.UserUpdateView.as_view(),
+        name='edit_profile'
+    ),
+    path(
         'profile/<slug:slug>/',
         views.UserDetailView.as_view(),
         name='profile'
     )
+    
 ]
