@@ -120,3 +120,17 @@ class Post(BaseModel):
     
     def get_absolute_url(self):
         return reverse('blog:post_detail', kwargs={'pk': self.pk})
+    
+
+class Comments(models.Model):
+    text = models.TextField('Комментарий')
+    created_at = models.DateTimeField(auto_now_add=True)
+    post_my = models.ForeignKey(
+        Post,
+        related_name='comments',
+        on_delete=models.CASCADE,
+    )
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    class Meta:
+        ordering = ('-created_at',)
