@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.forms.widgets import DateInput
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
@@ -17,13 +17,20 @@ User = get_user_model()
 
 
 class OnlyAuthorMixin(UserPassesTestMixin):
+    """
+    Проверяем является ли пользователь автором поста
+    или хозяином аккаунта
+    """
     def test_func(self):
         object = self.get_object()
-        print(object.username == self.request.user)
-        return object.username == self.request.user.username
+        username = getattr(object, 'username', None)
+        author = getattr(object, 'author', None)
+        user = self.request.user
+        return user.username == username or (author is not None and user == author)
 
 
 class UserUpdateView(OnlyAuthorMixin, UpdateView):
+    """Изменение данных пользователя"""
     model = User
     template_name = 'blog/user.html'
     slug_field = 'username'
@@ -34,16 +41,17 @@ class UserUpdateView(OnlyAuthorMixin, UpdateView):
         return reverse_lazy('blog:profile', kwargs={'slug': self.object.username})
 
 
-
 class PostMixin:
     model = Post
 
 
 class PostDetailView(PostMixin, DetailView):
+    """Просмотр поста"""
     pass
 
 
 class PostCreateView(PostMixin, LoginRequiredMixin, CreateView):
+    """"Создание новой публикации"""
     form_class = PostForm
 
     def form_valid(self, form):
@@ -55,6 +63,21 @@ class PostCreateView(PostMixin, LoginRequiredMixin, CreateView):
             'blog:profile',
             kwargs={'slug': self.request.user.username}
         )
+
+
+class PostUpdateView(PostMixin, OnlyAuthorMixin, UpdateView):
+    """Изменение существующей публикации """
+    form_class = PostForm
+
+    def dispatch(self, request, *args, **kwargs):
+        # Проверяем, имеет ли пользователь право на редактирование
+        self.object = self.get_object()
+        if not self.object.author == request.user:
+            # Если пользователь не автор, выполняем редирект на страницу публикации
+            post_url = reverse('blog:post_detail', kwargs={'pk': self.object.pk})
+            return redirect(post_url)
+        # Если проверка пройдена, продолжаем обычный поток выполнения
+        return super(PostUpdateView, self).dispatch(request, *args, **kwargs)
 
 
 class PostListMixin(PostMixin):

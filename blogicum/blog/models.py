@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.urls import reverse
 
 # Добавляем константу с максимальной длиной поля
 TITLE_MAX_LENGTH = 256
@@ -116,3 +117,6 @@ class Post(BaseModel):
 
     def __str__(self):
         return self.title[:15]  # Обрезаем поле title
+    
+    def get_absolute_url(self):
+        return reverse('blog:post_detail', kwargs={'pk': self.pk})

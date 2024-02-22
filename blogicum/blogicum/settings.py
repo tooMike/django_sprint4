@@ -119,7 +119,7 @@ TIME_ZONE = 'UTC'
 
 USE_I18N = True
 
-USE_L10N = True
+USE_L10N = False
 
 USE_TZ = True
 
@@ -145,5 +145,7 @@ INTERNAL_IPS = [
 CSRF_FAILURE_VIEW = 'pages.views.csrf_failure'
 
 LOGIN_REDIRECT_URL = 'blog:index'
+
+LOGIN_URL = 'login'
 
 MEDIA_ROOT = BASE_DIR / 'media'
