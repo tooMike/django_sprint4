@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.forms.widgets import DateInput
 from django.shortcuts import get_object_or_404
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
@@ -28,6 +28,11 @@ class UserUpdateView(OnlyAuthorMixin, UpdateView):
     template_name = 'blog/user.html'
     slug_field = 'username'
     fields = ['first_name', 'last_name', 'username', 'email']
+
+    def get_success_url(self):
+        # Возвращаем пользователя на страницу редактирования после успешного обновления
+        return reverse_lazy('blog:profile', kwargs={'slug': self.object.username})
+
 
 
 class PostMixin:
