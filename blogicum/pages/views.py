@@ -3,10 +3,14 @@ from django.views.generic import TemplateView
 
 
 class AboutTemplateView(TemplateView):
+    """Отображение страницы О проекте"""
+
     template_name = 'pages/about.html'
 
 
 class RulesTemplateView(TemplateView):
+    """Отображение страницы Правила"""
+
     template_name = 'pages/rules.html'
 
 

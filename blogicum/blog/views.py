@@ -1,17 +1,14 @@
-from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db.models import Count
-from django.db.models.query import QuerySet
 from django.http import Http404
-from django.forms.widgets import DateInput
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
+from django.views.generic import (CreateView, DeleteView,
+                                  DetailView, ListView, UpdateView)
 
 from blog.models import Category, Post, Comments
-
 from .forms import PostForm, CommentForm
 
 now = timezone.now()
@@ -24,15 +21,19 @@ class OnlyAuthorMixin(UserPassesTestMixin):
     Проверяем является ли пользователь автором поста
     или хозяином аккаунта
     """
+
     def test_func(self):
         object = self.get_object()
         username = getattr(object, 'username', None)
         author = getattr(object, 'author', None)
         user = self.request.user
-        return user.username == username or (author is not None and user == author)
+        return user.username == username or (author is not None
+                                             and user == author)
 
 
 class PostMixin:
+    """Миксин для поста"""
+
     model = Post
 
 
@@ -61,7 +62,8 @@ class PostDetailView(PostMixin, DetailView):
 
 
 class PostCreateView(PostMixin, LoginRequiredMixin, CreateView):
-    """"Создание новой публикации"""
+    """Создание новой публикации"""
+
     form_class = PostForm
 
     def form_valid(self, form):
@@ -77,6 +79,7 @@ class PostCreateView(PostMixin, LoginRequiredMixin, CreateView):
 
 class PostListMixin(PostMixin):
     """Добавляем в миксине фильтры и связанные модели"""
+
     paginate_by = 10
 
     def get_queryset(self):
@@ -95,26 +98,32 @@ class PostListMixin(PostMixin):
 
 
 class PostListView(PostListMixin, ListView):
-    pass
+    """Список постов"""
 
 
 class PostUpdateView(PostMixin, OnlyAuthorMixin, UpdateView):
-    """Изменение существующей публикации """
+    """Изменение существующей публикации"""
+
     form_class = PostForm
 
     def dispatch(self, request, *args, **kwargs):
         # Проверяем, имеет ли пользователь право на редактирование
         self.object = self.get_object()
         if not self.object.author == request.user:
-            # Если пользователь не автор, выполняем редирект на страницу публикации
-            post_url = reverse('blog:post_detail', kwargs={'pk': self.object.pk})
+            # Если пользователь не автор,
+            # выполняем редирект на страницу публикации
+            post_url = reverse(
+                'blog:post_detail',
+                kwargs={'pk': self.object.pk}
+            )
             return redirect(post_url)
         # Если проверка пройдена, продолжаем обычный поток выполнения
-        return super(PostUpdateView, self).dispatch(request, *args, **kwargs)
+        return super().dispatch(request, *args, **kwargs)
 
 
 class PostDeleteView(PostMixin, OnlyAuthorMixin, DeleteView):
-    """Удаление публикации """
+    """Удаление публикации"""
+
     model = Post
     form_class = PostForm
     template_name = 'blog/post_form.html'
@@ -124,43 +133,54 @@ class PostDeleteView(PostMixin, OnlyAuthorMixin, DeleteView):
 
 
 class CommentMixin():
+    """Миксин для комментариев"""
+
     model = Comments
     form_class = CommentForm
 
     def get_success_url(self):
-        return reverse('blog:post_detail', kwargs={'pk': self.object.post_id.pk})
-    
+        return reverse(
+            'blog:post_detail',
+            kwargs={'pk': self.object.post_id.pk}
+        )
+
 
 class CommentCreateView(CommentMixin, LoginRequiredMixin, CreateView):
+    """Создание комментариев"""
+
     post_id = None
     template_name = 'blog/comments.html'
 
-    # Переопределяем dispatch()
     def dispatch(self, request, *args, **kwargs):
         self.post_id = get_object_or_404(Post, pk=kwargs['pk'])
         return super().dispatch(request, *args, **kwargs)
 
-    # Переопределяем form_valid()
     def form_valid(self, form):
         form.instance.author = self.request.user
         form.instance.post_id = self.post_id
         return super().form_valid(form)
-    
+
     def get_success_url(self):
         return reverse('blog:post_detail', kwargs={'pk': self.post_id.pk})
 
 
 class CommentDeleteView(CommentMixin, OnlyAuthorMixin, DeleteView):
+    """Удаление комментария"""
+
     template_name = 'blog/comment.html'
     pk_url_kwarg = 'comment_id'
 
 
 class CommentUpdateView(CommentMixin, OnlyAuthorMixin, UpdateView):
+    """Изменение комментария"""
+
     template_name = 'blog/comment.html'
     pk_url_kwarg = 'comment_id'
 
 
 class CategoryListView(PostListMixin, ListView):
+    """Просмотр категории постов"""
+
     template_name = 'blog/category_list.html'
 
     def get_queryset(self):
@@ -176,17 +196,23 @@ class CategoryListView(PostListMixin, ListView):
         )
 
     def get_context_data(self, **kwargs):
-        """Добавляем категорию в контекст."""
+        """Добавляем категорию в контекст"""
         context = super().get_context_data(**kwargs)
         context['category'] = self.category
         return context
 
 
 class UserDetailView(PostListMixin, ListView):
+    """Просмотр информации и пользователе комментария"""
+
     template_name = 'blog/profile.html'
     paginate_by = 10
 
     def get_queryset(self):
+        """
+        Меняем логику отображения постов в зависимости от того
+        является ли пользователем автором или нет
+        """
         self.author = get_object_or_404(
             User,
             username=self.kwargs['slug'],
@@ -201,7 +227,7 @@ class UserDetailView(PostListMixin, ListView):
             ).filter(
                 author=self.author,
             ).annotate(
-            comment_count=Count('comments')  # Добавляем аннотацию для подсчета комментариев
+                comment_count=Count('comments'),
             ).order_by('-pub_date')
         # Если пользователь не является автором
         # то показываем ему только опубликованные посты
@@ -219,13 +245,16 @@ class UserDetailView(PostListMixin, ListView):
 
 class UserUpdateView(OnlyAuthorMixin, UpdateView):
     """Изменение данных пользователя"""
+
     model = User
     template_name = 'blog/user.html'
     slug_field = 'username'
     fields = ['first_name', 'last_name', 'username', 'email']
 
     def get_success_url(self):
-        # Возвращаем пользователя на страницу редактирования после успешного обновления
-        return reverse_lazy('blog:profile', kwargs={'slug': self.object.username})
-
-
+        # Возвращаем пользователя на страницу редактирования
+        # после успешного обновления
+        return reverse_lazy(
+            'blog:profile',
+            kwargs={'slug': self.object.username}
+        )

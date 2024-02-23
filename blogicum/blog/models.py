@@ -123,6 +123,8 @@ class Post(BaseModel):
 
 
 class Comments(models.Model):
+    """Комментарии"""
+
     text = models.TextField('Комментарий')
     created_at = models.DateTimeField(auto_now_add=True)
     post_id = models.ForeignKey(
