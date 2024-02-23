@@ -112,35 +112,36 @@ class PostListView(PostListMixin, ListView):
 
 
 class CommentCreateView(LoginRequiredMixin, CreateView):
-    post_my = None
+    post_id = None
     model = Comments
     form_class = CommentForm
     template_name = 'blog/comments.html'
 
     # Переопределяем dispatch()
     def dispatch(self, request, *args, **kwargs):
-        self.post_my = get_object_or_404(Post, pk=kwargs['pk'])
+        self.post_id = get_object_or_404(Post, pk=kwargs['pk'])
         return super().dispatch(request, *args, **kwargs)
 
     # Переопределяем form_valid()
     def form_valid(self, form):
         form.instance.author = self.request.user
-        form.instance.post_my = self.post_my
+        form.instance.post_id = self.post_id
         return super().form_valid(form)
 
     # Переопределяем get_success_url()
     def get_success_url(self):
-        return reverse('blog:index', kwargs={'pk': self.post_my.pk})
-    
+        return reverse('blog:post_detail', kwargs={'pk': self.post_id.pk})
 
-class CommentUpdateView(OnlyAuthorMixin, CreateView):
+
+class CommentUpdateView(OnlyAuthorMixin, UpdateView):
     model = Comments
     form_class = CommentForm
     template_name = 'blog/comment.html'
     pk_url_kwarg = 'comment_id'
 
     def get_success_url(self):
-        return reverse('blog:index')
+        post_id = self.object.post_id.pk
+        return reverse('blog:post_detail', kwargs={'pk': post_id})
 
 
 class CategoryListView(PostListMixin, ListView):

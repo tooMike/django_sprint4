@@ -125,7 +125,7 @@ class Post(BaseModel):
 class Comments(models.Model):
     text = models.TextField('Комментарий')
     created_at = models.DateTimeField(auto_now_add=True)
-    post_my = models.ForeignKey(
+    post_id = models.ForeignKey(
         Post,
         related_name='comments',
         on_delete=models.CASCADE,
