@@ -117,10 +117,10 @@ class Post(BaseModel):
 
     def __str__(self):
         return self.title[:15]  # Обрезаем поле title
-    
+
     def get_absolute_url(self):
         return reverse('blog:post_detail', kwargs={'pk': self.pk})
-    
+
 
 class Comments(models.Model):
     text = models.TextField('Комментарий')
