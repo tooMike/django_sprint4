@@ -130,7 +130,17 @@ class CommentCreateView(LoginRequiredMixin, CreateView):
 
     # Переопределяем get_success_url()
     def get_success_url(self):
-        return reverse('blog:post_detail', kwargs={'pk': self.post_my.pk})
+        return reverse('blog:index', kwargs={'pk': self.post_my.pk})
+    
+
+class CommentUpdateView(OnlyAuthorMixin, CreateView):
+    model = Comments
+    form_class = CommentForm
+    template_name = 'blog/comment.html'
+    pk_url_kwarg = 'comment_id'
+
+    def get_success_url(self):
+        return reverse('blog:index')
 
 
 class CategoryListView(PostListMixin, ListView):
