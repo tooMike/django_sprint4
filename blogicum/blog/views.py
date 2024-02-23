@@ -2,6 +2,8 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db.models import Count
+from django.db.models.query import QuerySet
+from django.http import Http404
 from django.forms.widgets import DateInput
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
@@ -36,7 +38,16 @@ class PostMixin:
 
 class PostDetailView(PostMixin, DetailView):
     """Просмотр поста"""
-    
+
+    # Проверяем, опубликован ли пост и является ли пользователь автором
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        post_pk = self.kwargs.get('pk')
+        post = get_object_or_404(queryset, pk=post_pk)
+        if not post.is_published and self.request.user != post.author:
+            raise Http404
+        return queryset.filter(pk=post_pk)
+
     # Добавляем комментарии к посту
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -157,6 +168,7 @@ class CategoryListView(PostListMixin, ListView):
         self.category = get_object_or_404(
             Category,
             slug=self.kwargs['slug'],
+            is_published=True,
         )
 
         return super().get_queryset().filter(
@@ -164,7 +176,7 @@ class CategoryListView(PostListMixin, ListView):
         )
 
     def get_context_data(self, **kwargs):
-        """Добавляем категории в контекст."""
+        """Добавляем категорию в контекст."""
         context = super().get_context_data(**kwargs)
         context['category'] = self.category
         return context
