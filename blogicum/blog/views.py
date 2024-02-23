@@ -17,18 +17,33 @@ User = get_user_model()
 
 
 class OnlyAuthorMixin(UserPassesTestMixin):
-    """
-    Проверяем является ли пользователь автором поста
-    или хозяином аккаунта
-    """
+    """Проверяем является ли пользователь автором поста"""
 
     def test_func(self):
-        object = self.get_object()
-        username = getattr(object, 'username', None)
-        author = getattr(object, 'author', None)
-        user = self.request.user
-        return user.username == username or (author is not None
-                                             and user == author)
+        post = get_object_or_404(Post, pk=self.kwargs.get('pk'))
+        return self.request.user == post.author
+
+
+class OnlyAuthorCommentMixin(UserPassesTestMixin):
+    """Проверяем является ли пользователь автором комментария"""
+
+    def test_func(self):
+        comment = get_object_or_404(Comments, pk=self.kwargs.get('comment_id'))
+        return self.request.user == comment.author
+
+
+class OnlyAccountOwnerMixin(UserPassesTestMixin):
+    """Проверяем является ли пользователь владельцем аккаунта"""
+
+    def test_func(self):
+        # Получаем пользователя, чью информацию пытаемся редактировать
+        user_model = get_user_model()
+        user_to_edit = get_object_or_404(
+            user_model,
+            username=self.kwargs.get('slug')
+        )
+        # Сравниваем с текущим аутентифицированным пользователем
+        return self.request.user == user_to_edit
 
 
 class PostMixin:
@@ -40,14 +55,16 @@ class PostMixin:
 class PostDetailView(PostMixin, DetailView):
     """Просмотр поста"""
 
-    # Проверяем, опубликован ли пост и является ли пользователь автором
+    # Автору показываем все его посты
+    # другим пользователям только опубликованные
     def get_queryset(self):
         queryset = super().get_queryset()
-        post_pk = self.kwargs.get('pk')
-        post = get_object_or_404(queryset, pk=post_pk)
-        if not post.is_published and self.request.user != post.author:
+        post = get_object_or_404(queryset, pk=self.kwargs.get('pk'))
+        if self.request.user == post.author:
+            return queryset
+        if not post.is_published:
             raise Http404
-        return queryset.filter(pk=post_pk)
+        return queryset
 
     # Добавляем комментарии к посту
     def get_context_data(self, **kwargs):
@@ -101,7 +118,7 @@ class PostListView(PostListMixin, ListView):
     """Список постов"""
 
 
-class PostUpdateView(PostMixin, OnlyAuthorMixin, UpdateView):
+class PostUpdateView(PostMixin, UpdateView):
     """Изменение существующей публикации"""
 
     form_class = PostForm
@@ -164,14 +181,14 @@ class CommentCreateView(CommentMixin, LoginRequiredMixin, CreateView):
         return reverse('blog:post_detail', kwargs={'pk': self.post_id.pk})
 
 
-class CommentDeleteView(CommentMixin, OnlyAuthorMixin, DeleteView):
+class CommentDeleteView(CommentMixin, OnlyAuthorCommentMixin, DeleteView):
     """Удаление комментария"""
 
     template_name = 'blog/comment.html'
     pk_url_kwarg = 'comment_id'
 
 
-class CommentUpdateView(CommentMixin, OnlyAuthorMixin, UpdateView):
+class CommentUpdateView(CommentMixin, OnlyAuthorCommentMixin, UpdateView):
     """Изменение комментария"""
 
     template_name = 'blog/comment.html'
@@ -203,7 +220,7 @@ class CategoryListView(PostListMixin, ListView):
 
 
 class UserDetailView(PostListMixin, ListView):
-    """Просмотр информации и пользователе комментария"""
+    """Просмотр информации о пользователе"""
 
     template_name = 'blog/profile.html'
     paginate_by = 10
@@ -243,7 +260,7 @@ class UserDetailView(PostListMixin, ListView):
         return context
 
 
-class UserUpdateView(OnlyAuthorMixin, UpdateView):
+class UserUpdateView(OnlyAccountOwnerMixin, UpdateView):
     """Изменение данных пользователя"""
 
     model = User
