@@ -1,55 +1,23 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.db.models import Count
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+
 from django.views.generic import (CreateView, DeleteView,
                                   DetailView, ListView, UpdateView)
 
-from blog.models import Category, Post, Comments
-from .forms import PostForm, CommentForm
+from blog.models import Category, Post
+from .forms import CommentForm, PostForm
+from .views_mixins import (CommentMixin, OnlyAuthorMixin,
+                           OnlyAuthorCommentMixin,
+                           PostMixin, PostListMixin, get_model_queryset)
 
-now = timezone.now()
-
+# Импортируем число постов на странице из настроек проекта
+paginate_by = getattr(settings, 'PAGINATE_BY', 10)
 User = get_user_model()
-
-
-class OnlyAuthorMixin(UserPassesTestMixin):
-    """Проверяем является ли пользователь автором поста"""
-
-    def test_func(self):
-        post = get_object_or_404(Post, pk=self.kwargs.get('pk'))
-        return self.request.user == post.author
-
-
-class OnlyAuthorCommentMixin(UserPassesTestMixin):
-    """Проверяем является ли пользователь автором комментария"""
-
-    def test_func(self):
-        comment = get_object_or_404(Comments, pk=self.kwargs.get('comment_id'))
-        return self.request.user == comment.author
-
-
-class OnlyAccountOwnerMixin(UserPassesTestMixin):
-    """Проверяем является ли пользователь владельцем аккаунта"""
-
-    def test_func(self):
-        # Получаем пользователя, чью информацию пытаемся редактировать
-        user_model = get_user_model()
-        user_to_edit = get_object_or_404(
-            user_model,
-            username=self.kwargs.get('slug')
-        )
-        # Сравниваем с текущим аутентифицированным пользователем
-        return self.request.user == user_to_edit
-
-
-class PostMixin:
-    """Миксин для поста"""
-
-    model = Post
 
 
 class PostDetailView(PostMixin, DetailView):
@@ -57,12 +25,20 @@ class PostDetailView(PostMixin, DetailView):
 
     # Автору показываем все его посты
     # другим пользователям только опубликованные
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        post = get_object_or_404(queryset, pk=self.kwargs.get('pk'))
-        if self.request.user == post.author:
-            return queryset
-        if not post.is_published:
+    def get_object(self):
+        queryset = super().get_object()
+        post = get_object_or_404(Post, pk=self.kwargs.get('post_id'))
+        # Если пользователь – автор поста, то показываем ему пост
+        # в любом случае
+        # Если пользователь не автор, то фильтруем посты и
+        # проверяем опубликован ли пост и категория
+        if (
+            self.request.user != post.author and (
+                not post.is_published
+                or post.pub_date > timezone.now()
+                or not post.category.is_published
+            )
+        ):
             raise Http404
         return queryset
 
@@ -90,28 +66,8 @@ class PostCreateView(PostMixin, LoginRequiredMixin, CreateView):
     def get_success_url(self):
         return reverse(
             'blog:profile',
-            kwargs={'slug': self.request.user.username}
+            kwargs={'username': self.request.user.username}
         )
-
-
-class PostListMixin(PostMixin):
-    """Добавляем в миксине фильтры и связанные модели"""
-
-    paginate_by = 10
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        return queryset.select_related(
-            "category",
-            "location",
-            "author",
-        ).filter(
-            is_published=True,
-            category__is_published=True,
-            pub_date__lte=now,
-        ).annotate(
-            comment_count=Count('comments')
-        ).order_by('-pub_date')
 
 
 class PostListView(PostListMixin, ListView):
@@ -125,13 +81,13 @@ class PostUpdateView(PostMixin, UpdateView):
 
     def dispatch(self, request, *args, **kwargs):
         # Проверяем, имеет ли пользователь право на редактирование
-        self.object = self.get_object()
-        if not self.object.author == request.user:
+        post_object = self.get_object()
+        if not post_object.author == request.user:
             # Если пользователь не автор,
             # выполняем редирект на страницу публикации
             post_url = reverse(
                 'blog:post_detail',
-                kwargs={'pk': self.object.pk}
+                kwargs={'post_id': post_object.pk}
             )
             return redirect(post_url)
         # Если проверка пройдена, продолжаем обычный поток выполнения
@@ -141,81 +97,61 @@ class PostUpdateView(PostMixin, UpdateView):
 class PostDeleteView(PostMixin, OnlyAuthorMixin, DeleteView):
     """Удаление публикации"""
 
-    model = Post
     form_class = PostForm
     template_name = 'blog/post_form.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['form'] = PostForm(instance=self.object)
+        return context
 
     def get_success_url(self):
         return reverse('blog:index',)
 
 
-class CommentMixin():
-    """Миксин для комментариев"""
-
-    model = Comments
-    form_class = CommentForm
-
-    def get_success_url(self):
-        return reverse(
-            'blog:post_detail',
-            kwargs={'pk': self.object.post_id.pk}
-        )
-
-
 class CommentCreateView(CommentMixin, LoginRequiredMixin, CreateView):
     """Создание комментариев"""
 
-    post_id = None
     template_name = 'blog/comments.html'
-
-    def dispatch(self, request, *args, **kwargs):
-        self.post_id = get_object_or_404(Post, pk=kwargs['pk'])
-        return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
         form.instance.author = self.request.user
-        form.instance.post_id = self.post_id
+        form.instance.post = get_object_or_404(Post, pk=self.kwargs['post_id'])
         return super().form_valid(form)
-
-    def get_success_url(self):
-        return reverse('blog:post_detail', kwargs={'pk': self.post_id.pk})
 
 
 class CommentDeleteView(CommentMixin, OnlyAuthorCommentMixin, DeleteView):
     """Удаление комментария"""
 
-    template_name = 'blog/comment.html'
-    pk_url_kwarg = 'comment_id'
-
 
 class CommentUpdateView(CommentMixin, OnlyAuthorCommentMixin, UpdateView):
     """Изменение комментария"""
-
-    template_name = 'blog/comment.html'
-    pk_url_kwarg = 'comment_id'
 
 
 class CategoryListView(PostListMixin, ListView):
     """Просмотр категории постов"""
 
+    slug_url_kwarg = 'category_slug'
     template_name = 'blog/category_list.html'
+
+    def get_category(self):
+        """Получаем категорию"""
+        category = get_object_or_404(
+            Category,
+            slug=self.kwargs['category_slug'],
+            is_published=True,
+        )
+        return category
 
     def get_queryset(self):
         """Фильтруем посты по категории."""
-        self.category = get_object_or_404(
-            Category,
-            slug=self.kwargs['slug'],
-            is_published=True,
-        )
-
-        return super().get_queryset().filter(
-            category=self.category,
-        )
+        category = self.get_category()
+        return get_model_queryset(model_manager=category.posts)
 
     def get_context_data(self, **kwargs):
         """Добавляем категорию в контекст"""
         context = super().get_context_data(**kwargs)
-        context['category'] = self.category
+        context['category'] = self.get_category()
         return context
 
 
@@ -223,55 +159,62 @@ class UserDetailView(PostListMixin, ListView):
     """Просмотр информации о пользователе"""
 
     template_name = 'blog/profile.html'
-    paginate_by = 10
+    paginate_by = paginate_by
+    slug_url_kwarg = 'username'
+
+    def get_author(self):
+        """Получаем автора"""
+        author = get_object_or_404(
+            User,
+            username=self.kwargs['username'],
+        )
+        return author
 
     def get_queryset(self):
         """
         Меняем логику отображения постов в зависимости от того
         является ли пользователем автором или нет
         """
-        self.author = get_object_or_404(
-            User,
-            username=self.kwargs['slug'],
-        )
+        author = self.get_author()
         # Если пользователь является автором
         # то показываем ему все посты без фильтров
-        if self.request.user == self.author:
-            queryset = Post.objects.select_related(
-                "category",
-                "location",
-                "author",
-            ).filter(
-                author=self.author,
-            ).annotate(
-                comment_count=Count('comments'),
-            ).order_by('-pub_date')
+        if self.request.user == author:
+            queryset = get_model_queryset(
+                model_manager=author.posts,
+                add_filters=False,
+                add_annotation=True,
+            )
         # Если пользователь не является автором
         # то показываем ему только опубликованные посты
         else:
-            queryset = super().get_queryset().filter(
-                author=self.author
+            queryset = get_model_queryset(
+                model_manager=author.posts,
+                add_filters=True,
+                add_annotation=True,
             )
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['profile'] = self.author
+        context['profile'] = self.get_author()
         return context
 
 
-class UserUpdateView(OnlyAccountOwnerMixin, UpdateView):
+class UserUpdateView(LoginRequiredMixin, UpdateView):
     """Изменение данных пользователя"""
 
     model = User
     template_name = 'blog/user.html'
-    slug_field = 'username'
     fields = ['first_name', 'last_name', 'username', 'email']
+
+    def get_object(self):
+        """Возвращаем объект пользователя из request.user"""
+        return self.request.user
 
     def get_success_url(self):
         # Возвращаем пользователя на страницу редактирования
         # после успешного обновления
         return reverse_lazy(
             'blog:profile',
-            kwargs={'slug': self.object.username}
+            kwargs={'username': self.object.username}
         )

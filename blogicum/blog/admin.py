@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Category, Location, Post
+from .models import Category, Comments, Location, Post
 
 
 class PostInline(admin.TabularInline):
@@ -74,6 +74,20 @@ class LocationAdmin(admin.ModelAdmin):
     list_display_links = ('name',)
 
 
+class CommentsAdmin(admin.ModelAdmin):
+    """Настройка вывода информации о комментариях"""
+
+    list_display = (
+        'id',
+        'text',
+        'created_at',
+        'post',
+        'author',
+    )
+    list_display_links = ('id',)
+
+
 admin.site.register(Category, CategoryAdmin)
 admin.site.register(Location, LocationAdmin)
 admin.site.register(Post, PostAdmin)
+admin.site.register(Comments, CommentsAdmin)

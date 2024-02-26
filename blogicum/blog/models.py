@@ -45,7 +45,7 @@ class Category(BaseModel):
     class Meta:
         verbose_name = 'категория'
         verbose_name_plural = 'Категории'
-        default_related_name = 'posts'
+        default_related_name = 'category'
 
     def __str__(self):
         return self.title[:15]  # Обрезаем поле title
@@ -62,7 +62,7 @@ class Location(BaseModel):
     class Meta:
         verbose_name = 'местоположение'
         verbose_name_plural = 'Местоположения'
-        default_related_name = 'posts'
+        default_related_name = 'location'
 
     def __str__(self):
         return self.name[:15]  # Обрезаем поле name
@@ -89,7 +89,7 @@ class Post(BaseModel):
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        verbose_name='Автор публикации'
+        verbose_name='Автор публикации',
     )
     location = models.ForeignKey(
         Location,
@@ -102,7 +102,7 @@ class Post(BaseModel):
         Category,
         on_delete=models.SET_NULL,
         null=True,
-        verbose_name='Категория'
+        verbose_name='Категория',
     )
     image = models.ImageField(
         'Изображение',
@@ -114,12 +114,13 @@ class Post(BaseModel):
         verbose_name = 'публикация'
         verbose_name_plural = 'Публикации'
         ordering = ('-pub_date',)
+        default_related_name = 'posts'
 
     def __str__(self):
         return self.title[:15]  # Обрезаем поле title
 
     def get_absolute_url(self):
-        return reverse('blog:post_detail', kwargs={'pk': self.pk})
+        return reverse('blog:post_detail', kwargs={'post_id': self.pk})
 
 
 class Comments(models.Model):
@@ -127,12 +128,19 @@ class Comments(models.Model):
 
     text = models.TextField('Комментарий')
     created_at = models.DateTimeField(auto_now_add=True)
-    post_id = models.ForeignKey(
+    post = models.ForeignKey(
         Post,
-        related_name='comments',
         on_delete=models.CASCADE,
+        verbose_name='Пост'
     )
-    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        verbose_name='Автор',
+    )
 
     class Meta:
+        verbose_name = 'комментарий'
+        verbose_name_plural = 'Комментарии'
         ordering = ('created_at',)
+        default_related_name = 'comments'
