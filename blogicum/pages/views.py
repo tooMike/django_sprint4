@@ -37,5 +37,3 @@ def csrf_failure(request, reason=''):
 def server_error(request):
     """Функция для отрисовки страницы 500 ошибки"""
     return render(request, 'pages/500.html', status=500)
-
-
