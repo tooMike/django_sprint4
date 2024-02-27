@@ -11,9 +11,11 @@ from django.views.generic import (CreateView, DeleteView,
 
 from blog.models import Category, Post
 from .forms import CommentForm, PostForm
+from .query_utils import get_model_queryset
 from .views_mixins import (CommentMixin, OnlyAuthorMixin,
                            OnlyAuthorCommentMixin,
-                           PostMixin, PostListMixin, get_model_queryset)
+                           PostMixin, PostListMixin)
+
 
 # Импортируем число постов на странице из настроек проекта
 paginate_by = getattr(settings, 'PAGINATE_BY', 10)
@@ -82,7 +84,7 @@ class PostUpdateView(PostMixin, UpdateView):
     def dispatch(self, request, *args, **kwargs):
         # Проверяем, имеет ли пользователь право на редактирование
         post_object = self.get_object()
-        if not post_object.author == request.user:
+        if post_object.author != request.user:
             # Если пользователь не автор,
             # выполняем редирект на страницу публикации
             post_url = reverse(

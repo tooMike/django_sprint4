@@ -1,13 +1,10 @@
 from django.contrib.auth.mixins import UserPassesTestMixin
-from django.db.models import Count
-
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
-from django.utils import timezone
-
 
 from blog.models import Post, Comments
 from .forms import CommentForm
+from .query_utils import get_model_queryset
 
 
 class OnlyAuthorMixin(UserPassesTestMixin):
@@ -25,7 +22,10 @@ class OnlyAuthorCommentMixin(UserPassesTestMixin):
     pk_url_kwarg = 'comment_id'
 
     def test_func(self):
-        comment = get_object_or_404(Comments, pk=self.kwargs.get('comment_id'))
+        comment = get_object_or_404(
+            Comments,
+            pk=self.kwargs.get(self.pk_url_kwarg)
+        )
         return self.request.user == comment.author
 
 
@@ -60,26 +60,3 @@ class CommentMixin():
             'blog:post_detail',
             kwargs={'post_id': self.object.post.pk}
         )
-
-
-def get_model_queryset(
-        model_manager=Post.objects,
-        add_filters=True,
-        add_annotation=False):
-    """Функция для получения нужных постов"""
-    queryset = model_manager.select_related(
-        'category',
-        'location',
-        'author',
-    ).order_by('-pub_date')
-    if add_filters:
-        queryset = queryset.filter(
-            is_published=True,
-            category__is_published=True,
-            pub_date__lte=timezone.now(),
-        )
-    if add_annotation:
-        queryset = queryset.annotate(
-            comment_count=Count('comments')
-        )
-    return queryset
